@@ -10,6 +10,12 @@ from ... import delayed
 from .. import methods
 from .io import from_delayed, from_pandas
 
+try:
+    import connectorx as cx
+    _WITH_CX = True
+except ImportError:
+    _WITH_CX = False
+
 
 def read_sql_query(
     sql,
@@ -22,6 +28,7 @@ def read_sql_query(
     head_rows=5,
     meta=None,
     engine_kwargs=None,
+    enable_cx=False,
     **kwargs,
 ):
     """
@@ -176,7 +183,7 @@ def read_sql_query(
         q = sql.where(sa.sql.and_(index >= lower, cond))
         parts.append(
             delayed(_read_sql_chunk)(
-                q, con, meta, engine_kwargs=engine_kwargs, **kwargs
+                q, con, meta, engine_kwargs=engine_kwargs, enable_cx=enable_cx, **kwargs
             )
         )
 
@@ -198,6 +205,7 @@ def read_sql_table(
     schema=None,
     meta=None,
     engine_kwargs=None,
+    enable_cx=False,
     **kwargs,
 ):
     """
@@ -378,11 +386,12 @@ def read_sql_table(
         head_rows=head_rows,
         meta=meta,
         engine_kwargs=engine_kwargs,
+        enable_cx=enable_cx,
         **kwargs,
     )
 
 
-def read_sql(sql, con, index_col, **kwargs):
+def read_sql(sql, con, index_col, enable_cx=False, **kwargs):
     """
     Read SQL query or database table into a DataFrame.
 
@@ -416,17 +425,23 @@ def read_sql(sql, con, index_col, **kwargs):
     read_sql_query : Read SQL query into a DataFrame.
     """
     if isinstance(sql, str):
-        return read_sql_table(sql, con, index_col, **kwargs)
+        return read_sql_table(sql, con, index_col, enable_cx=enable_cx, **kwargs)
     else:
-        return read_sql_query(sql, con, index_col, **kwargs)
+        return read_sql_query(sql, con, index_col, enable_cx=enable_cx, **kwargs)
 
 
-def _read_sql_chunk(q, uri, meta, engine_kwargs=None, **kwargs):
+def _read_sql_chunk(q, uri, meta, engine_kwargs=None, enable_cx=False, **kwargs):
     import sqlalchemy as sa
 
-    engine_kwargs = engine_kwargs or {}
-    engine = sa.create_engine(uri, **engine_kwargs)
-    df = pd.read_sql(q, engine, **kwargs)
+    if enable_cx:
+        if not _WITH_CX:
+            raise ImportError("connectorx is not installed." "Please run pip install connectorx")
+        index_col = kwargs.pop("index_col", None)
+        df = pd.read_sql(uri, q, index_col=index_col)
+    else:
+        engine_kwargs = engine_kwargs or {}
+        engine = sa.create_engine(uri, **engine_kwargs)
+        df = pd.read_sql(q, engine, **kwargs)
     engine.dispose()
     if len(df) == 0:
         return meta
