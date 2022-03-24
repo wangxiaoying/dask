@@ -26,6 +26,7 @@ try:
         read_sql,
         read_sql_query,
         read_sql_table,
+        read_sql_cx,
         read_table,
         to_bag,
         to_csv,
